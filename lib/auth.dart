@@ -1,3 +1,4 @@
+import 'package:dingdong/notes.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -45,7 +46,7 @@ class _AuthPageState extends State<AuthPage> {
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: 'Email',
+                    labelText: 'Enter your Email here...',
                     prefixIcon: Icon(Icons.email),
                     border: OutlineInputBorder(),
                   ),
@@ -54,7 +55,7 @@ class _AuthPageState extends State<AuthPage> {
                 TextField(
                   controller: _password,
                   decoration: const InputDecoration(
-                    labelText: 'Password',
+                    labelText: 'Enter your Password here...',
                     prefixIcon: Icon(Icons.lock),
                     border: OutlineInputBorder(),
                   ),
@@ -79,6 +80,8 @@ class _AuthPageState extends State<AuthPage> {
                                   email: email,
                                   password: password,
                                 );
+                                if(!mounted) return;
+                                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => NotesPage()));
                               } else {
                                 final res = await supabase.auth.signUp(
                                   email: email,

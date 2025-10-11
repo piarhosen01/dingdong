@@ -6,130 +6,256 @@ class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
 
   @override
-  State<NotesPage> createState() => __NotesPagStateState();
+  State<NotesPage> createState() => _NotesPageState();
 }
 
-class __NotesPagStateState extends State<NotesPage> {
+class _NotesPageState extends State<NotesPage> {
   final supabase = Supabase.instance.client;
   late final Stream<List<Map<String, dynamic>>> _notesStream;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    final uid = supabase.auth.currentUser?.id;
-    _notesStream = supabase
-        .from('notes')
-        .stream(primaryKey: ['id'])
-        .eq( 'user_id', uid = '1')
-        .order('created_at', ascending: false);
+    _initializeNotes();
+  }
+
+  void _initializeNotes() {
+    try {
+      final uid = supabase.auth.currentUser?.id;
+      if (uid == null) {
+        throw Exception('User not authenticated');
+      }
+      _notesStream = supabase
+          .from('notes')
+          .stream(primaryKey: ['id'])
+          .eq('uid', uid)
+          .order('created_at', ascending: false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading notes: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> addNoteDialog() async {
     final controller = TextEditingController();
-    await showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Add Note'),
-        contentPadding: EdgeInsets.all(16),
-        // ignore: sort_child_properties_last
-        children: [
-          TextFormField(
-            controller: controller,
-            autocorrect: true,
-            textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => Navigator.pop(context, controller.text),
-            decoration: const InputDecoration(
-              hintText: 'Type your note here...',
-              border: OutlineInputBorder(),
+    setState(() => _isLoading = true);
+    
+    try {
+      await showDialog(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Add Note'),
+          contentPadding: const EdgeInsets.all(16),
+          children: [
+            TextFormField(
+              controller: controller,
+              autocorrect: true,
+              maxLength: 1000, // Add a reasonable limit
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => Navigator.pop(context, controller.text),
+              decoration: const InputDecoration(
+                hintText: 'Type your note here...',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ), //
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, controller.text),
+                  child: const Text("Save"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ).then((value) async {
+        final body = (value as String?)?.trim();
+        if (body == null || body.isEmpty) return;
 
-          const SizedBox(height: 12),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: Text("Save"),
-          ),
-        ],
-      ),
-    ).then((onValue) async {
-      final body = (onValue as String?)?.trim();
-      if (body == null || body.isEmpty) return;
-      await supabase.from('notes').insert({
-        'user_id': supabase.auth.currentUser?.id,
-        'body': body,
+        final uid = supabase.auth.currentUser?.id;
+        if (uid == null) throw Exception('User not authenticated');
+
+        await supabase.from('notes').insert({
+          'uid': uid,
+          'body': body,
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Note added successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       });
-    });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding note: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> editNoteDialog(Map<String, dynamic> note) async {
     final controller = TextEditingController(
-      text: note['body'] as String ?? '',
+      text: note['body'] as String,
     );
-    await showDialog(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: const Text('Edit Note'),
-        contentPadding: EdgeInsets.all(16),
-        // ignore: sort_child_properties_last
-        children: [
-          TextFormField(
-            controller: controller,
-            autocorrect: true,
-            textInputAction: TextInputAction.done,
-            onFieldSubmitted: (_) => Navigator.pop(context, controller.text),
-            decoration: const InputDecoration(
-              hintText: 'Type your note here...',
-              border: OutlineInputBorder(),
+    setState(() => _isLoading = true);
+
+    try {
+      await showDialog(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Edit Note'),
+          contentPadding: const EdgeInsets.all(16),
+          children: [
+            TextFormField(
+              controller: controller,
+              autocorrect: true,
+              maxLength: 1000,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => Navigator.pop(context, controller.text),
+              decoration: const InputDecoration(
+                hintText: 'Type your note here...',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ), //
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("Cancel"),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, controller.text),
+                  child: const Text("Save"),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ).then((value) async {
+        final body = (value as String?)?.trim();
+        if (body == null || body.isEmpty) return;
 
-          const SizedBox(height: 12),
+        final userId = supabase.auth.currentUser?.id;
+        if (userId == null) throw Exception('User not authenticated');
+        
+        await supabase
+            .from('notes')
+            .update({'body': body})
+            .eq('id', note['id'])
+            .eq('uid', userId); // Security check
 
-          Row(
-            children: [
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text("Cancel"),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, controller.text),
-                child: Text("Save"),
-              ),
-            ],
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Note updated successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating note: $e'),
+            backgroundColor: Colors.red,
           ),
-        ],
-      ),
-    ).then((onValue) async {
-      final body = (onValue as String?)?.trim();
-      if (body == null || body.isEmpty) return;
-      await supabase
-          .from('notes')
-          .update({'body': body})
-          .eq('id', note['id'] as int);
-    });
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> deleteNoteDialog(Map<String, dynamic> note) async {
-    final confirmed = await showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete a Note'),
-        content: const Text('Are you sure you want to delete this note?'),
+    setState(() => _isLoading = true);
 
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text("Cancel"),
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete Note'),
+          content: const Text('Are you sure you want to delete this note? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              child: const Text("Delete"),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        final userId = supabase.auth.currentUser?.id;
+        if (userId == null) throw Exception('User not authenticated');
+
+        await supabase
+            .from('notes')
+            .delete()
+            .eq('id', note['id'])
+            .eq('uid', userId); // Security check
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Note deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting note: $e'),
+            backgroundColor: Colors.red,
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text("Delete"),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await supabase.from('notes').delete().eq('id', note['id']);
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _logout() async {
@@ -144,13 +270,12 @@ class __NotesPagStateState extends State<NotesPage> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dingong Notes'),
+        title: const Text('DingDong Notes'),
         actions: [
           IconButton(
-            onPressed: _logout,
+            onPressed: _isLoading ? null : _logout,
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
           ),
@@ -159,52 +284,118 @@ class __NotesPagStateState extends State<NotesPage> {
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _notesStream,
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final notes = snapshot.data!;
-          if (notes.isEmpty) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: Text('No notes yet. Add note by clicking + button.'),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading notes...'),
+                ],
+              ),
             );
           }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error: ${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _initializeNotes,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          if (!snapshot.hasData || snapshot.data == null) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Initializing notes...'),
+                ],
+              ),
+            );
+          }
+
+          final notes = snapshot.data!;
+          if (notes.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.note_add, size: 48, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No notes yet',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Add a note by clicking the + button below'),
+                ],
+              ),
+            );
+          }
+
           return ListView.separated(
+            padding: const EdgeInsets.all(8),
             itemCount: notes.length,
             separatorBuilder: (context, index) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final note = notes[index];
-              return ListTile(
-                title: Text(note['body'] as String? ?? ''),
-                subtitle: Text(
-                  (note['created_at'] as String?)?.toString() ?? '',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+              final createdAt = DateTime.parse(note['created_at'] as String);
+              final formattedDate = '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
+              
+              return Card(
+                child: ListTile(
+                  title: Text(
+                    note['body'] as String,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  subtitle: Text(
+                    formattedDate,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  trailing: Wrap(
+                    spacing: 12,
+                    children: [
+                      IconButton(
+                        onPressed: _isLoading ? null : () => editNoteDialog(note),
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        tooltip: 'Edit note',
+                      ),
+                      IconButton(
+                        onPressed: _isLoading ? null : () => deleteNoteDialog(note),
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        tooltip: 'Delete note',
+                      ),
+                    ],
+                  ),
                 ),
-                trailing: Wrap(
-                  spacing: 12,
-                  children: [
-                    IconButton(
-                      onPressed: () => editNoteDialog(note),
-                      icon: Icon(Icons.edit, color: Colors.blue),
-                    ),
-                    IconButton(
-                      onPressed: () => deleteNoteDialog(note),
-                      icon: Icon(Icons.delete, color: Colors.red),
-                    ),
-                  ],
-                ),
-                onTap: () => editNoteDialog(note),
-                onLongPress: () => deleteNoteDialog(note),
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: addNoteDialog,
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _isLoading ? null : addNoteDialog,
+        icon: const Icon(Icons.add),
+        label: const Text('Add Note'),
       ),
     );
   }

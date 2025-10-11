@@ -64,8 +64,13 @@ class _AuthPageState extends State<AuthPage> {
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  height: 40,
+                  height: 48,
                   child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
                     onPressed: isLoading
                         ? null
                         : () async {
@@ -74,37 +79,158 @@ class _AuthPageState extends State<AuthPage> {
                             final email = _email.text.trim();
                             final password = _password.text;
 
+                            if (email.isEmpty || password.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please fill in all fields'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                              setState(() => isLoading = false);
+                              return;
+                            }
+
+                            // Removed unnecessary connection check
+
                             try {
                               if (isLogin) {
-                                await supabase.auth.signInWithPassword(
+                                final response = await supabase.auth.signInWithPassword(
                                   email: email,
                                   password: password,
                                 );
-                                if(!mounted) return;
-                                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => NotesPage()));
+                                
+                                if (response.user != null) {
+                                  if (!mounted) return;
+                                  await Navigator.pushReplacement(
+                                    context, 
+                                    MaterialPageRoute(builder: (_) => const NotesPage())
+                                  );
+                                }
                               } else {
-                                final res = await supabase.auth.signUp(
+                                // Validate password
+                                if (password.length < 6) {
+                                  throw Exception('Password must be at least 6 characters');
+                                }
+
+                                // Attempt signup directly without checking existing users
+                                final response = await supabase.auth.signUp(
                                   email: email,
                                   password: password,
+                                  data: {
+                                    'email': email,
+                                  },
                                 );
 
-                                if (res.user != null) {
-                                  await supabase.from('users').insert({
-                                    'user_id': res.user!.id,
-                                    'email': email,
-                                    'image_url': '',
-                                  });
+                                if (response.user != null) {
+                                  try {
+                                    // Create user profile in users table
+                                    await supabase.from('users').insert({
+                                      'user_id': response.user!.id,
+                                      'email': email,
+                                      'image_url': '',
+                                      'created_at': DateTime.now().toIso8601String(),
+                                    }).select();
+                                    
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Registration successful! You can now log in.'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                    setState(() => isLogin = true);
+                                  } catch (profileError) {
+                                    print('Error creating profile: $profileError');
+                                    // If profile creation fails, still allow the user to continue
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Account created but profile setup incomplete. Please try logging in.'),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                    setState(() => isLogin = true);
+                                  }
+                                } else {
+                                  throw Exception('Failed to create user account');
                                 }
                               }
                             } catch (e) {
+                              if (!mounted) return;
+                              
+                              String errorMessage;
+                              IconData errorIcon;
+                              
+                              if (e.toString().contains('SocketException') || 
+                                  e.toString().contains('Failed host lookup')) {
+                                errorMessage = 'Network error. Please check your internet connection.';
+                                errorIcon = Icons.wifi_off;
+                              } else if (e.toString().contains('AuthException')) {
+                                errorMessage = 'Invalid email or password';
+                                errorIcon = Icons.error_outline;
+                              } else if (e.toString().contains('already registered') || 
+                                       e.toString().contains('already been taken')) {
+                                errorMessage = 'This email is already registered';
+                                errorIcon = Icons.person_off;
+                              } else if (e.toString().contains('least 6 characters')) {
+                                errorMessage = 'Password must be at least 6 characters';
+                                errorIcon = Icons.lock_outline;
+                              } else if (e.toString().contains('valid email')) {
+                                errorMessage = 'Please enter a valid email address';
+                                errorIcon = Icons.email_outlined;
+                              } else {
+                                errorMessage = 'An unexpected error occurred. Please try again.';
+                                errorIcon = Icons.error_outline;
+                                print('Auth Error: $e');
+                              }
+                              
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error: $e')),
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      Icon(errorIcon, color: Colors.white),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(errorMessage)),
+                                    ],
+                                  ),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 5),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  action: SnackBarAction(
+                                    label: 'Dismiss',
+                                    textColor: Colors.white,
+                                    onPressed: () {
+                                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                    },
+                                  ),
+                                ),
                               );
                             }
 
-                            setState(() => isLoading = false);
+                            if (mounted) {
+                              setState(() => isLoading = false);
+                            }
                           },
-                    child: Text(title),
+                    child: isLoading
+                        ? const SizedBox(
+                            height: 24,
+                            width: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(isLogin ? Icons.login : Icons.person_add),
+                              const SizedBox(width: 8),
+                              Text(title),
+                            ],
+                          ),
                   ),
                 ),
                 const SizedBox(height: 16),

@@ -8,13 +8,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // Quick connectivity check
     final connectivityResult = await Connectivity().checkConnectivity();
     if (connectivityResult == ConnectivityResult.none) {
       throw Exception('No internet connection available');
     }
 
-    // Initialize Supabase
     await Supabase.initialize(
       url: 'https://btspnfanrcbwgsnybfti.supabase.co',
       anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0c3BuZmFucmNid2dzbnliZnRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MjYzODMsImV4cCI6MjA3NTAwMjM4M30.d59AbuErq5EUwQ9mXep19PYC0hWnzWmi4GwRBMJorK0',
@@ -30,7 +28,7 @@ void main() async {
 
 class ErrorApp extends StatelessWidget {
   final String error;
-  
+
   const ErrorApp({super.key, required this.error});
 
   @override
@@ -83,14 +81,12 @@ class MyApp extends StatelessWidget {
       home: StreamBuilder<AuthState>(
         stream: Supabase.instance.client.auth.onAuthStateChange,
         builder: (context, snapshot) {
-          // Show loading while waiting for auth state
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
 
-          // Show error if any
           if (snapshot.hasError) {
             return Scaffold(
               body: Center(
@@ -114,11 +110,11 @@ class MyApp extends StatelessWidget {
             );
           }
 
-          // Return NotesPage if user is authenticated, otherwise AuthPage
           return snapshot.hasData && snapshot.data!.session != null
               ? const NotesPage()
               : const AuthPage();
         },
       ),
     );
-  }}
+  }
+}

@@ -90,8 +90,6 @@ class _AuthPageState extends State<AuthPage> {
                               return;
                             }
 
-                            // Removed unnecessary connection check
-
                             try {
                               if (isLogin) {
                                 final response = await supabase.auth.signInWithPassword(
@@ -107,12 +105,10 @@ class _AuthPageState extends State<AuthPage> {
                                   );
                                 }
                               } else {
-                                // Validate password
                                 if (password.length < 6) {
                                   throw Exception('Password must be at least 6 characters');
                                 }
 
-                                // Attempt signup directly without checking existing users
                                 final response = await supabase.auth.signUp(
                                   email: email,
                                   password: password,
@@ -123,7 +119,6 @@ class _AuthPageState extends State<AuthPage> {
 
                                 if (response.user != null) {
                                   try {
-                                    // Create user profile in users table
                                     await supabase.from('users').insert({
                                       'user_id': response.user!.id,
                                       'email': email,
@@ -141,7 +136,6 @@ class _AuthPageState extends State<AuthPage> {
                                     setState(() => isLogin = true);
                                   } catch (profileError) {
                                     print('Error creating profile: $profileError');
-                                    // If profile creation fails, still allow the user to continue
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(

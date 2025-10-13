@@ -1,3 +1,4 @@
+import 'package:dingdong/auth.dart';
 import 'package:dingdong/profile_page.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,7 +12,7 @@ class NotesPage extends StatefulWidget {
 
 class _NotesPageState extends State<NotesPage> {
   final _supabase = Supabase.instance.client;
-  Stream<List<Map<String, dynamic>>>? _notesStream;
+  late final Stream<List<Map<String, dynamic>>> _notesStream;
   bool _isLoading = false;
   String? _imageUrl;
   String? _username;
@@ -28,14 +29,17 @@ class _NotesPageState extends State<NotesPage> {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      final data = await _supabase.from('users').select().eq('user_id', userId).single();
+      final data = await _supabase
+          .from('users')
+          .select()
+          .eq('user_id', userId)
+          .single();
 
       if (mounted) {
         setState(() {
           _imageUrl = data['image_url'] as String?;
-          _username = data['user_name'] as String? ??
-              _supabase.auth.currentUser?.email?.split('@')[0] ??
-              'User';
+          _username = data['user_name'] as String? ?? 
+                     _supabase.auth.currentUser?.email?.split('@')[0] ?? 'User';
         });
       }
     } catch (e) {
@@ -45,17 +49,15 @@ class _NotesPageState extends State<NotesPage> {
 
   void _initializeNotes() {
     try {
-      final uid = _supabase.auth.currentUser?.id;
+      final uid = supabase.auth.currentUser?.id;
       if (uid == null) {
         throw Exception('User not authenticated');
       }
-      setState(() {
-        _notesStream = _supabase
-            .from('notes')
-            .stream(primaryKey: ['id'])
-            .eq('uid', uid)
-            .order('created_at', ascending: false);
-      });
+      _notesStream = supabase
+          .from('notes')
+          .stream(primaryKey: ['id'])
+          .eq('uid', uid)
+          .order('created_at', ascending: false);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -71,7 +73,7 @@ class _NotesPageState extends State<NotesPage> {
   Future<void> addNoteDialog() async {
     final controller = TextEditingController();
     setState(() => _isLoading = true);
-
+    
     try {
       await showDialog(
         context: context,
@@ -82,7 +84,7 @@ class _NotesPageState extends State<NotesPage> {
             TextFormField(
               controller: controller,
               autocorrect: true,
-              maxLength: 1000,
+              maxLength: 1000, // Add a reasonable limit
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => Navigator.pop(context, controller.text),
               decoration: const InputDecoration(
@@ -111,15 +113,13 @@ class _NotesPageState extends State<NotesPage> {
         final body = (value as String?)?.trim();
         if (body == null || body.isEmpty) return;
 
-        final uid = _supabase.auth.currentUser?.id;
+        final uid = supabase.auth.currentUser?.id;
         if (uid == null) throw Exception('User not authenticated');
 
-        await _supabase.from('notes').insert({
+        await supabase.from('notes').insert({
           'uid': uid,
           'body': body,
         });
-
-        _initializeNotes();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -147,7 +147,9 @@ class _NotesPageState extends State<NotesPage> {
   }
 
   Future<void> editNoteDialog(Map<String, dynamic> note) async {
-    final controller = TextEditingController(text: note['body'] as String);
+    final controller = TextEditingController(
+      text: note['body'] as String,
+    );
     setState(() => _isLoading = true);
 
     try {
@@ -189,16 +191,14 @@ class _NotesPageState extends State<NotesPage> {
         final body = (value as String?)?.trim();
         if (body == null || body.isEmpty) return;
 
-        final userId = _supabase.auth.currentUser?.id;
+        final userId = supabase.auth.currentUser?.id;
         if (userId == null) throw Exception('User not authenticated');
-
-        await _supabase
+        
+        await supabase
             .from('notes')
             .update({'body': body})
             .eq('id', note['id'])
-            .eq('uid', userId);
-
-        _initializeNotes();
+            .eq('uid', userId); // Security check
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -241,7 +241,9 @@ class _NotesPageState extends State<NotesPage> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
               child: const Text("Delete"),
             ),
           ],
@@ -249,16 +251,14 @@ class _NotesPageState extends State<NotesPage> {
       );
 
       if (confirmed == true) {
-        final userId = _supabase.auth.currentUser?.id;
+        final userId = supabase.auth.currentUser?.id;
         if (userId == null) throw Exception('User not authenticated');
 
-        await _supabase
+        await supabase
             .from('notes')
             .delete()
             .eq('id', note['id'])
-            .eq('uid', userId);
-
-        _initializeNotes();
+            .eq('uid', userId); // Security check
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -284,6 +284,8 @@ class _NotesPageState extends State<NotesPage> {
       }
     }
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -393,49 +395,47 @@ class _NotesPageState extends State<NotesPage> {
 
           return RefreshIndicator(
             onRefresh: () async {
-              _initializeNotes();
-              await _loadUserProfile();
-              return Future<void>.value();
+              setState(() {
+                _initializeNotes();
+              });
             },
             child: ListView.separated(
-              padding: const EdgeInsets.all(8),
-              itemCount: notes.length,
-              separatorBuilder: (context, index) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final note = notes[index];
-                final createdAt = DateTime.parse(note['created_at'] as String);
-                final formattedDate =
-                    '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
-
-                return Card(
-                  child: ListTile(
-                    title: Text(
-                      note['body'] as String,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    subtitle: Text(
-                      formattedDate,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    trailing: Wrap(
-                      spacing: 12,
-                      children: [
-                        IconButton(
-                          onPressed: _isLoading ? null : () => editNoteDialog(note),
-                          icon: const Icon(Icons.edit, color: Colors.blue),
-                          tooltip: 'Edit note',
-                        ),
-                        IconButton(
-                          onPressed: _isLoading ? null : () => deleteNoteDialog(note),
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          tooltip: 'Delete note',
-                        ),
-                      ],
-                    ),
+            padding: const EdgeInsets.all(8),
+            itemCount: notes.length,
+            separatorBuilder: (context, index) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final note = notes[index];
+              final createdAt = DateTime.parse(note['created_at'] as String);
+              final formattedDate = '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
+              
+              return Card(
+                child: ListTile(
+                  title: Text(
+                    note['body'] as String,
+                    style: const TextStyle(fontSize: 16),
                   ),
-                );
-              },
-            ),
+                  subtitle: Text(
+                    formattedDate,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  trailing: Wrap(
+                    spacing: 12,
+                    children: [
+                      IconButton(
+                        onPressed: _isLoading ? null : () => editNoteDialog(note),
+                        icon: const Icon(Icons.edit, color: Colors.blue),
+                        tooltip: 'Edit note',
+                      ),
+                      IconButton(
+                        onPressed: _isLoading ? null : () => deleteNoteDialog(note),
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        tooltip: 'Delete note',
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
         },
       ),

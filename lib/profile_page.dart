@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:dingdong/auth.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -14,7 +12,6 @@ class _ProfilePageState extends State<ProfilePage> {
   final _supabase = Supabase.instance.client;
   final _usernameController = TextEditingController();
   bool _loading = false;
-  String? _imageUrl;
   String? _username;
   String? _email;
 
@@ -31,50 +28,26 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _loadProfile() async {
-    setState(() {
-      _loading = true;
-    });
+    if (!mounted) return;
+    setState(() => _loading = true);
 
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      final userEmail = _supabase.auth.currentUser?.email;
-      if (userId == null) throw Exception('Not authenticated');
+      final user = _supabase.auth.currentUser;
+      if (user == null) throw Exception('Not authenticated');
 
-      final data = await _supabase.from('users').select().eq('user_id', userId).single();
-      String? imageUrl = data['image_url'] as String?;
+      final data = await _supabase
+          .from('users')
+          .select('user_name')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-      if (imageUrl != null && imageUrl.isNotEmpty) {
-        final parsed = Uri.tryParse(imageUrl);
-        if (parsed != null && parsed.isAbsolute && (parsed.scheme == 'http' || parsed.scheme == 'https')) {
-        } else {
-          try {
-            final public = _supabase.storage.from('avatars').getPublicUrl(imageUrl);
-            final pu = Uri.tryParse(public);
-            if (pu != null && pu.isAbsolute) {
-              imageUrl = public;
-            } else {
-              final signed = await _supabase.storage.from('avatars').createSignedUrl(imageUrl, 60 * 60);
-              final su = Uri.tryParse(signed);
-              if (su != null && su.isAbsolute) {
-                imageUrl = signed;
-              } else {
-                imageUrl = null;
-              }
-            }
-          } catch (e) {
-            imageUrl = null;
-          }
-        }
-      } else {
-        imageUrl = null;
+      if (mounted) {
+        setState(() {
+          _email = user.email;
+          _username = data?['user_name'] as String? ?? user.email?.split('@')[0] ?? 'User';
+          _usernameController.text = _username!;
+        });
       }
-
-      setState(() {
-        _email = userEmail;
-        _imageUrl = imageUrl;
-        _username = data['user_name'] as String? ?? userEmail?.split('@')[0] ?? 'User';
-        _usernameController.text = _username!;
-      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -82,210 +55,199 @@ class _ProfilePageState extends State<ProfilePage> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _updateProfile() async {
-    setState(() {
-      _loading = true;
-    });
-
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('Not authenticated');
-
-      await _supabase.from('users').update({'user_name': _usernameController.text.trim()}).eq('user_id', userId);
-
-      if (mounted) {
-        setState(() {
-          _username = _usernameController.text.trim();
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully'), backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating profile: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _uploadImage() async {
-    setState(() {
-      _loading = true;
-    });
-
-    try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery, maxWidth: 300, maxHeight: 300);
-      if (image == null) return;
-
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('Not authenticated');
-
-      final bytes = await image.readAsBytes();
-      final fileExt = image.path.split('.').last.toLowerCase();
-      if (!['jpg', 'jpeg', 'png', 'gif'].contains(fileExt)) {
-        throw Exception('Invalid image format. Please use JPG, PNG or GIF.');
-      }
-
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final imagePath = '$userId/$fileName';
-
-      await _supabase.storage.from('avatars').uploadBinary(
-            imagePath,
-            bytes,
-            fileOptions: FileOptions(contentType: 'image/$fileExt', upsert: true),
-          );
-
-      String? finalUrl;
-      try {
-        final public = _supabase.storage.from('avatars').getPublicUrl(imagePath);
-        final pu = Uri.tryParse(public);
-        if (pu != null && pu.isAbsolute && (pu.scheme == 'http' || pu.scheme == 'https')) {
-          finalUrl = public;
-        }
-      } catch (_) {}
-
-      if (finalUrl == null) {
-        try {
-          final signed = await _supabase.storage.from('avatars').createSignedUrl(imagePath, 60 * 60);
-          final su = Uri.tryParse(signed);
-          if (su != null && su.isAbsolute) {
-            finalUrl = signed;
-          }
-        } catch (_) {}
-      }
-
-      if (finalUrl == null || finalUrl.isEmpty) {
-        throw Exception('Could not resolve a usable URL for the uploaded image');
-      }
-
-      await _supabase.from('users').update({'image_url': finalUrl}).eq('user_id', userId);
-
-      setState(() {
-        _imageUrl = finalUrl;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile image updated successfully'), backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating profile image: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _logout() async {
-    await _supabase.auth.signOut();
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const AuthPage()),
-      (route) => false,
-    );
+    setState(() => _loading = true);
+
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not authenticated');
+
+      final newUsername = _usernameController.text.trim();
+      await _supabase
+          .from('users')
+          .update({'user_name': newUsername})
+          .eq('user_id', userId);
+
+      if (mounted) {
+        setState(() => _username = newUsername);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Username updated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating username: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _signOut() async {
+    setState(() => _loading = true);
+    try {
+      await _supabase.auth.signOut();
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error signing out: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(
+        title: const Text('Profile'),
+        centerTitle: true,
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              icon: const Icon(Icons.logout_rounded),
+              onPressed: _loading ? null : _signOut,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.red[50],
+                foregroundColor: Colors.red[400],
+              ),
+            ),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(24),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Center(
-                    child: Stack(
-                      children: [
-                        Builder(
-                          builder: (context) {
-                            final validImageUrl = _imageUrl != null &&
-                                _imageUrl!.isNotEmpty &&
-                                _imageUrl!.startsWith('http');
-
-                            if (validImageUrl) {
-                              return CircleAvatar(
-                                radius: 50,
-                                backgroundColor: Colors.grey.shade200,
-                                backgroundImage: NetworkImage(_imageUrl!),
-                                onBackgroundImageError: (exception, stackTrace) {
-                                  if (mounted) {
-                                    setState(() => _imageUrl = null);
-                                  }
-                                },
-                              );
-                            } else {
-                              return CircleAvatar(
-                                radius: 50,
-                                backgroundColor: Colors.grey.shade200,
-                                child: const Icon(Icons.person, size: 50, color: Colors.grey),
-                              );
-                            }
-                          },
-                        ),
-                        Positioned(
-                          bottom: -10,
-                          right: -10,
-                          child: IconButton(
-                            icon: const Icon(Icons.camera_alt),
-                            onPressed: _uploadImage,
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6C63FF).withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.person_outline_rounded,
+                      size: 50,
+                      color: Color(0xFF6C63FF),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.grey.shade200),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Email',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            _email ?? '',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Color(0xFF2D3142),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  Text(_email ?? '', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 24),
-                  TextField(
-                    controller: _usernameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Username',
-                      border: OutlineInputBorder(),
+                  const SizedBox(height: 16),
+                  Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(color: Colors.grey.shade200),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _updateProfile,
-                    child: const Text('Update Profile'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Username',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _usernameController,
+                            decoration: InputDecoration(
+                              hintText: 'Enter your username',
+                              filled: true,
+                              fillColor: Colors.grey[50],
+                              prefixIcon: const Icon(
+                                Icons.person_outline_rounded,
+                                color: Color(0xFF6C63FF),
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey.shade200),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey.shade200),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: const BorderSide(color: Color(0xFF6C63FF)),
+                              ),
+                            ),
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => _updateProfile(),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton.icon(
-                    onPressed: _logout,
+                    onPressed: _loading ? null : _updateProfile,
+                    icon: const Icon(Icons.save_rounded),
+                    label: const Text('Save Changes'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Logout'),
                   ),
                 ],
               ),

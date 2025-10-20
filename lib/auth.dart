@@ -28,20 +28,35 @@ class _AuthPageState extends State<AuthPage> {
     final title = isLogin ? 'Login' : 'Signup';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          title,
-          style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
-        ),
-      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 450),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                const Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 64,
+                  color: Color(0xFF6C63FF),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Welcome to DingDong',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: const Color(0xFF2D3142),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isLogin ? 'Log in to continue' : 'Create your account',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 32),
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,

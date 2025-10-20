@@ -13,7 +13,6 @@ class _NotesPageState extends State<NotesPage> {
   final _supabase = Supabase.instance.client;
   Stream<List<Map<String, dynamic>>>? _notesStream;
   bool _isLoading = false;
-  String? _imageUrl;
   String? _username;
 
   @override
@@ -25,21 +24,24 @@ class _NotesPageState extends State<NotesPage> {
 
   Future<void> _loadUserProfile() async {
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
 
-      final data = await _supabase.from('users').select().eq('user_id', userId).single();
+      final data = await _supabase
+          .from('users')
+          .select('user_name')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
       if (mounted) {
         setState(() {
-          _imageUrl = data['image_url'] as String?;
-          _username = data['user_name'] as String? ??
-              _supabase.auth.currentUser?.email?.split('@')[0] ??
+          _username = data?['user_name'] as String? ??
+              user.email?.split('@')[0] ??
               'User';
         });
       }
     } catch (e) {
-      print('Error loading profile: $e');
+      debugPrint('Error loading profile: $e');
     }
   }
 
@@ -289,32 +291,49 @@ class _NotesPageState extends State<NotesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DingDong Notes'),
+        title: Row(
+          children: [
+            const Text('DingDong Notes'),
+          ],
+        ),
         actions: [
-          InkWell(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfilePage()),
-              ).then((_) => _loadUserProfile());
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  if (_imageUrl != null)
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundImage: NetworkImage(_imageUrl!),
-                    )
-                  else
-                    const CircleAvatar(
-                      radius: 16,
-                      child: Icon(Icons.person, size: 20),
-                    ),
-                  const SizedBox(width: 8),
-                  Text(_username ?? 'Profile'),
-                ],
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ProfilePage()),
+                  ).then((_) => _loadUserProfile());
+                },
+                borderRadius: BorderRadius.circular(30),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C63FF).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.person_outline,
+                        size: 20,
+                        color: Color(0xFF6C63FF),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _username ?? 'Profile',
+                        style: const TextStyle(
+                          color: Color(0xFF6C63FF),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -385,7 +404,7 @@ class _NotesPageState extends State<NotesPage> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  const Text('Add a note by clicking the + button below'),
+                  const Text('Add a note by clicking the + Add Note button below'),
                 ],
               ),
             );
@@ -407,30 +426,74 @@ class _NotesPageState extends State<NotesPage> {
                 final formattedDate =
                     '${createdAt.day}/${createdAt.month}/${createdAt.year} ${createdAt.hour}:${createdAt.minute.toString().padLeft(2, '0')}';
 
-                return Card(
-                  child: ListTile(
-                    title: Text(
-                      note['body'] as String,
-                      style: const TextStyle(fontSize: 16),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Card(
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: BorderSide(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      ),
                     ),
-                    subtitle: Text(
-                      formattedDate,
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    trailing: Wrap(
-                      spacing: 12,
-                      children: [
-                        IconButton(
-                          onPressed: _isLoading ? null : () => editNoteDialog(note),
-                          icon: const Icon(Icons.edit, color: Colors.blue),
-                          tooltip: 'Edit note',
-                        ),
-                        IconButton(
-                          onPressed: _isLoading ? null : () => deleteNoteDialog(note),
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          tooltip: 'Delete note',
-                        ),
-                      ],
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            note['body'] as String,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              height: 1.5,
+                              color: Color(0xFF2D3142),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                formattedDate,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    onPressed: _isLoading ? null : () => editNoteDialog(note),
+                                    icon: Icon(
+                                      Icons.edit_outlined,
+                                      color: Colors.grey[600],
+                                      size: 20,
+                                    ),
+                                    tooltip: 'Edit note',
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.grey[100],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    onPressed: _isLoading ? null : () => deleteNoteDialog(note),
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.red[400],
+                                      size: 20,
+                                    ),
+                                    tooltip: 'Delete note',
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.red[50],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );
@@ -441,8 +504,11 @@ class _NotesPageState extends State<NotesPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isLoading ? null : addNoteDialog,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('Add Note'),
+        elevation: 2,
+        backgroundColor: const Color(0xFF6C63FF),
+        foregroundColor: Colors.white,
       ),
     );
   }
